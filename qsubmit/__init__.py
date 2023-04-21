@@ -92,7 +92,7 @@ ENGINES = {
         'params': {
             'name': '-J <NAME>',
             'mem': '--mem=<MEM>',
-            'cpus': '-c <CPUS>',
+            'cpus': '-c <CPUS> <NODELIST>',
             'queue': '-p <QUEUE>',
             'hold': '-d afterany:<HOLD>',
             # in gpu_mem variable, there should be either a space " ", or it should be like '--constraint="gpuram11G|gpuram24G"'
@@ -201,13 +201,14 @@ if __name__ == '__main__':
 
 #  gpuram size constraints on ÚFAL cluster
 #  TODO: it should be automated to reflect changes on cluster automatically
-#  (and made effecitvely, possibly without this subprocess in every run)
+#  (and made effectively, possibly without this subprocess in every run)
 # sinfo -o "%N %f" | grep gpu | cut -f 2 -d' ' | cut -f 1 -d',' | sort -u
 UFAL_GPU_MEM_OPTIONS = """gpuram11G
 gpuram16G
 gpuram24G
 gpuram40G
 gpuram48G""".split()
+
 
 
 def detect_location():
@@ -301,7 +302,7 @@ class Job:
         self.mem = mem
         self.cpus = cpus
         self.gpus = gpus
-        self.queue, self.gpus, self.gpu_mem = self._parse_queue(location, queue, gpus, gpu_mem)
+        self.queue, self.gpus, self.gpu_mem, self.nodelist = self._parse_queue(location, queue, gpus, gpu_mem)
         self._jobid = None
         self._host = None
         self._state = None
@@ -495,10 +496,22 @@ class Job:
         return self._jobid
 
     def _parse_queue(self, location, queue, gpus, gpu_mem):
-        """on ufal, we can use wildcards to specify queues, or number of GPUs to imply GPU queues
+        """on ufal, we can use wildcards to specify queues, or number of GPUs to imply GPU queues.
+
+        Furthermore, on ufal we can specify a node (or a wildcard for nodes) by --queue=dll-3gpu[1-5]@qpu-\* . 
+        TODO: if the node specification is wrong, it fails with an ungly error message. And I'm not sure about
+        the node wildcard format, but a full name works, at least, e.g. tdll-3gpu4@gpu-\* .
         """
         if location != "ufal":
             return queue, gpus
+
+        if "@" in queue:
+            nodes, queue = queue.split("@")
+            nodelist=f'--nodelist="{nodes}"'
+        else:
+            nodelist = " "
+
+            print("nodelist: ",nodelist,file=sys.stderr)
         gpu_options = ["gpu-troja","gpu-ms"]
         cpu_options = ["cpu-troja","cpu-ms"]
 
@@ -518,7 +531,7 @@ class Job:
         out_q = ",".join(selected)
         if "gpu" in out_q and (gpus is None or gpus == 0):
             gpus = 1
-        return out_q, gpus, self._parse_gpu_mem(location, gpu_mem, gpus)
+        return out_q, gpus, self._parse_gpu_mem(location, gpu_mem, gpus), nodelist
 
     def _parse_gpu_mem(self, location, gpu_mem, gpus):
         if location != "ufal":
