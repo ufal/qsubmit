@@ -505,7 +505,7 @@ class Job:
         if location != "ufal":
             return queue, gpus
 
-        if "@" in queue:
+        if queue is not None and "@" in queue:
             nodes, queue = queue.split("@")
             nodelist=f'--nodelist="{nodes}"'
         else:

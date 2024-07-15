@@ -1,5 +1,5 @@
 from argparse import ArgumentParser
-from qsubmit import Job
+from qsubmit import Job, detect_location
 import sys
 import os
 
@@ -9,9 +9,23 @@ def run_script(args):
     args = vars(args)
     if args['interactive']:
         del args['command']
-    if args['gpus'] == 0:
+
+    # one of these options triggers using GPU:
+    # 1) gpu_mem (GPU memory size) is set 
+    # 2) gpus (number of GPUs) is positive 
+    # 3) on ufal cluster, queue name contains "gpu"
+
+    # Then if the other options are not set, the defaults are used: gpu_mem=1g, gpus=1
+    if args['gpu_mem'] is not None or (detect_location() == "ufal" and args['queue'] is not None and 'gpu' in args['queue']):
+        if args['gpus'] == 0: 
+            args['gpus'] = 1
+
+    if args['gpus'] == 0:  # no gpu option at all
         del args['gpus']
         del args['gpu_mem']
+    elif args['gpu_mem'] is None:
+        args['gpu_mem'] = '1g'
+
     args['log_dir'] = args['logdir']
     args['dependencies'] = args['hold']
     del args['logdir']
@@ -44,7 +58,7 @@ def qsubmit_argparser(name="qsubmit",desc="Batch engine script submission wrappe
     ap.add_argument('-q', '--queue', help='Name of the queue to send the command to')
     ap.add_argument('-c', '-cpus', '--cpus', '--cores', help='Number of CPU cores to use', type=int, default=1)
     ap.add_argument('-g', '-gpus','--gpus', help='Number of GPUs to use', type=int, default=0)
-    ap.add_argument('-M', '-gpu-mem', '--gpu-mem', help='Amount of GPU memory to use', default='1g')
+    ap.add_argument('-M', '-gpu-mem', '--gpu-mem', help='Amount of GPU memory to use', default=None)
     ap.add_argument('-m', '-mem', '--mem', help='Amount of memory to use', default='1g')
     ap.add_argument('-l', '-logdir', '--logdir', help='Directory where the log file will be stored')
     ap.add_argument('-w', '--hold', '--wait', help='Hold until jobs with the given IDs are completed',
