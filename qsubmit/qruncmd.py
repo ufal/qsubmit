@@ -6,6 +6,7 @@ from pathlib import Path
 from copy import copy
 from threading import Thread
 import time
+from collections import Counter
 
 import sys
 import os
@@ -39,6 +40,21 @@ class QruncmdJob:
     def is_completed(self):
         return os.path.exists(self.fname+".ok")
 
+    # for statistics only! may be wrong during creation
+    def status(self):
+        lock = self.fname+".lock"
+        ok = self.fname+".ok"
+        out = self.fname+".out"
+        if os.path.exists(ok):
+            if os.path.exists(lock):
+                return "completed+locked"  # happens shortly. If a job is permanently in this status, there's something wrong
+            return "completed"  # OK
+        if os.path.exists(out):
+            if os.path.exists(lock):
+                return "in-process"  # OK
+            return "was-open"  # a worker opened this job and unlocked it without completing, which is suspicious. But at least a new worker can take it. 
+        return "pending"  # OK
+
     def flush(self):
         with open(self.fname+".out","r") as f:
             sys.stdout.write(f.read())
@@ -46,6 +62,7 @@ class QruncmdJob:
         os.remove(self.fname)
         os.remove(self.fname+".out")
         os.remove(self.fname+".ok")
+
 
 def temp_workdir_fname(pref):
     import string
@@ -132,6 +149,15 @@ def main():
 
     stop_everything = False
 
+    def job_statistics(jobs):
+        # TODO: summary and recommendation, 
+        print("Statistics:",file=sys.stderr)
+        c = Counter(j.status() for j in jobs)
+        for st,v in c.items():
+            print(" ",st,"jobs:",v,file=sys.stderr)
+        print("Total jobs:",sum(c.values()),file=sys.stderr)
+        print("Total workers:",workers,file=sys.stderr)
+
     def submitting_loop():
         jobid = 0
         global iseof
@@ -151,6 +177,7 @@ def main():
                 j.submit()
             else:
                 print(f"submitting loop is idle, {len(current_jobs)} < {max_jobs}",file=sys.stderr)
+                job_statistics(current_jobs)
                 time.sleep(1)
         print("submitting completed",file=sys.stderr)
 

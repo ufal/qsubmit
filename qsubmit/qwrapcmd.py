@@ -24,23 +24,21 @@ workdir = sys.argv[1]
 fifofn = sys.argv[2]
 job_pref = "job"
 
-out = open(fifofn,"r")
+out = open(fifofn,"r")  # the command's output. Going to redirect it to the .out file
 
-#global lines
-
-#lines = 0
 def process_job(inname):
     global complete
     complete = False
+    broken = False
     lines = 0
     def reading():
         global complete
         received = 0
         with open(inname+".out","w") as outf:
-            while True:
+            while not broken:
                 if received < lines:
                     r = out.readline()
-                    print(r,end="",file=outf)
+                    print(r,end="",file=outf,flush=True)
                     received += 1
                 elif received == lines:
                     if complete:
@@ -51,13 +49,17 @@ def process_job(inname):
     t = threading.Thread(target=reading)
     t.start()
 
-    print(f"Processing {inname}",file=sys.stderr)
-    with open(inname,"r") as f:
-        for line in f:
-            print(line,end="",flush=True)
-            lines += 1
-            if lines % 100 == 0:
-                print("line",lines,file=sys.stderr)
+    try:
+        print(f"Processing {inname}",file=sys.stderr)
+        with open(inname,"r") as f:
+            for line in f:
+                print(line,end="",flush=True)
+                lines += 1
+                if lines % 100 == 0:
+                    print("line",lines,file=sys.stderr)
+    except Exception as e:
+        broken = True  # to terminate the reading thread
+        raise e
     complete = True
     print(f"waiting for {lines} lines",file=sys.stderr)
     t.join()
@@ -84,6 +86,8 @@ while not os.path.exists(f"{workdir}/fast-poison-pill"):  # to be implemented in
             try:
                 os.mkdir(lock)
             except FileExistsError:
+                continue
+            if not os.path.exists(dfn):
                 continue
             process_job(dfn)
             Path(ok).touch()
