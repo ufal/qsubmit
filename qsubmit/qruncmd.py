@@ -78,8 +78,8 @@ def main():
 
     # ...plus following ones
     ap.add_argument('--workdir', type=str, default=None, help="workdir, default is qruncmd-workdir-XXXXXXXXX where X stands for random letter")
-    ap.add_argument('--jobs',"--workers", type=int, default=5, help="How many workers (qsubmit jobs) to start. The workers concurrently wait for jobs (stdin sections saved to workdir), claim them, process and return the outputs.")
-    ap.add_argument('-s','--size', type=int, help="How many lines in one job section.", default=500)
+    ap.add_argument('--jobs',"--workers", type=int, default=5, help="How many workers (qsubmit jobs) to start. The workers concurrently wait for jobs (stdin sections saved to workdir), claim them, process and return the outputs. (default: %(default)s)")
+    ap.add_argument('-s','--size', type=int, help="How many lines in one job section. (default: %(default)s)", default=500)
     args = ap.parse_args()
 
     batch_size = args.size
