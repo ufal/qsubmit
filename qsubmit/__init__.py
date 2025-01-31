@@ -207,7 +207,10 @@ UFAL_GPU_MEM_OPTIONS = """gpuram11G
 gpuram16G
 gpuram24G
 gpuram40G
-gpuram48G""".split()
+gpuram48G
+gpuram64G
+gpuram95G
+""".split()
 
 
 
