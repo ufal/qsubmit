@@ -56,9 +56,12 @@ class QruncmdJob:
         return "pending"  # OK
 
     def flush(self):
-        with open(self.fname+".out","r") as f:
-            sys.stdout.write(f.read())
-        sys.stdout.flush()
+        with open(self.fname+".out","rb") as f:
+            while chunk := f.read(64 * 1024):  # 64 KB):
+                sys.stdout.buffer.write(chunk)
+                sys.stdout.buffer.flush()
+            sys.stdout.buffer.write(f.read())
+        sys.stdout.buffer.flush()
         os.remove(self.fname)
         os.remove(self.fname+".out")
         os.remove(self.fname+".ok")
@@ -98,11 +101,25 @@ def main():
 
     ######### start workers
 
+    max_jobs = 2*workers
+
+    current_jobs = []
+    running_workers = []
+
+    def job_statistics(jobs):
+        # TODO: summary and recommendation, 
+        print("Statistics:",file=sys.stderr)
+        c = Counter(j.status() for j in jobs)
+        for st,v in c.items():
+            print(" ",st,"jobs:",v,file=sys.stderr)
+        print("Total jobs:",sum(c.values()),file=sys.stderr)
+        print("Running workers:",len(running_workers),file=sys.stderr)
+        return c
 
 
     def start_workers():
-        started_workers = 0
         cmd = " ".join(args.command)
+        started_workers = 0
         for i in range(workers):
             # stdbuf avoids stucking data between the pipes
             wrapcmd = f"mkfifo {workdir}/out-fifo-worker-{i} && stdbuf -o0 python3 -m qsubmit.qwrapcmd {workdir} {workdir}/out-fifo-worker-{i} | stdbuf -o0 -i0 -e0 {cmd} > {workdir}/out-fifo-worker-{i} ; touch {workdir}/worker-{i}.end"
@@ -117,8 +134,14 @@ def main():
             # run qsubmit Job
             run_script(v)
             started_workers += 1
+            running_workers.append(None)
             if started_workers % 10 == 0:
                 time.sleep(1)
+
+            if started_workers > 10:
+                stat = Counter(j.status() for j in current_jobs)
+                while stat['pending'] == 0 or len(current_jobs) <= started_workers:
+                    time.sleep(5)
         print("all the workers have started",file=sys.stderr)
 
     if workers > 10:
@@ -136,9 +159,6 @@ def main():
         d = f"{workdir}/slow-poison-pill"
         Path(d).touch()
 
-    max_jobs = 2*workers
-
-    current_jobs = []
 
     global iseof
     iseof = False  # True when the input is over
@@ -149,15 +169,7 @@ def main():
 
     stop_everything = False
 
-    def job_statistics(jobs):
-        # TODO: summary and recommendation, 
-        print("Statistics:",file=sys.stderr)
-        c = Counter(j.status() for j in jobs)
-        for st,v in c.items():
-            print(" ",st,"jobs:",v,file=sys.stderr)
-        print("Total jobs:",sum(c.values()),file=sys.stderr)
-        print("Total workers:",workers,file=sys.stderr)
-
+    
     def submitting_loop():
         jobid = 0
         global iseof
@@ -175,10 +187,12 @@ def main():
                         break
                 current_jobs.append(j)
                 j.submit()
+                print(f"submitting loop: {len(current_jobs)} < {max_jobs} submitted, job nr. {jobid}",file=sys.stderr)
             else:
                 print(f"submitting loop is idle, {len(current_jobs)} < {max_jobs}",file=sys.stderr)
                 job_statistics(current_jobs)
                 time.sleep(1)
+            job_statistics(current_jobs)
         print("submitting completed",file=sys.stderr)
 
     def flushing_loop():

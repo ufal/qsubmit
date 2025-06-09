@@ -213,6 +213,44 @@ gpuram95G
 """.split()
 
 
+# copy-pasted from
+# https://ufal.mff.cuni.cz/lrc/index.php?title=Environment
+UFAL_GPU_TABLE="""
+dll-10gpu2 	2 	2:8:2 	257830 	gpuram11G,gpu_cc6.1 	NVIDIA GeForce GTX 1080 Ti
+dll-8gpu5 	2 	2:10:2 	385595 	gpuram16G,gpu_cc7.5 	NVIDIA Quadro RTX 5000
+dll-8gpu4 	2 	2:8:2 	253721 	gpuram16G,gpu_cc8.6 	NVIDIA RTX A4000
+dll-10gpu1 	2 	2:8:2 	257830 	gpuram16G,gpu_cc8.6 	NVIDIA RTX A4000
+dll-8gpu[1-2] 	2 	2:16:2 	515838 	gpuram24G,gpu_cc8.0 	NVIDIA A30
+dll-4gpu[1-2] 	2 	2:10:2 	187978 	gpuram24G,gpu_cc8.6 	NVIDIA RTX 3090
+dll-3gpu[1-5] 	2 	2:16:2 	128642 	gpuram48G,gpu_cc8.6 	NVIDIA A40
+dll-4gpu4 	2 	1:16:2 	257616 	gpuram48G,gpu_cc8.6 	NVIDIA A40
+dll-4gpu3 	2 	1:32:2 	515652 	gpuram48G,gpu_cc8.9 	NVIDIA L40
+tdll-8gpu[3-4] 	2 	2:8:2 	253725 	gpuram16G,gpu_cc7.5 	NVIDIA Quadro P5000
+tdll-8gpu[1-2] 	2 	2:16:2 	257666 	gpuram40G,gpu_cc8.0 	NVIDIA A100
+tdll-3gpu[1-4] 	2 	2:16:2 	128642 	gpuram48G,gpu_cc8.6 	NVIDIA A40
+tdll-2gpu1 	2 	1:48:2 	386474 	gpuram64G 	AMD MI210
+tdll-2gpu2 	2 	1:48:2 	386666 	gpuram95G,gpu_cc9.0 	NVIDIA H100 NVL 
+"""
+
+UFAL_GPUTYPE_TO_CONSTRAINTS = {}
+for line in UFAL_GPU_TABLE.split("\n"):
+    if not line: continue
+    _, _, _, _, constraints, gputype = line.split("\t")
+    gputype = gputype.lower()  # lowercase
+    UFAL_GPUTYPE_TO_CONSTRAINTS[gputype] = constraints.strip()
+
+# adding unique short names, such as a40 for nvidia a40
+short_names = {}
+for g in UFAL_GPUTYPE_TO_CONSTRAINTS.keys():
+    for n in g.split():
+        if n not in short_names:
+            short_names[n] = UFAL_GPUTYPE_TO_CONSTRAINTS[g]
+        else:
+            short_names[n] = None
+for n,c in short_names.items():
+    if c is not None:
+        UFAL_GPUTYPE_TO_CONSTRAINTS[n] = c
+
 
 def detect_location():
     """Check for hostname patterns, if they correspond to any of the preset locations."""
@@ -285,6 +323,7 @@ class Job:
                  name=None, work_dir=None, log_dir=None, dependencies=None,
                  mem=DEFAULT_MEMORY, cpus=DEFAULT_CPUS,
                  gpus=None, gpu_mem=DEFAULT_GPU_MEM,
+                 gpu_type=None,
                  engine=None, location=None, queue=None,
                  code_templ=DEFAULT_CODE_TEMPLATE, script_templ=DEFAULT_SCRIPT_TEMPLATE):
         """Constructor. May provide some running options --
@@ -305,7 +344,14 @@ class Job:
         self.mem = mem
         self.cpus = cpus
         self.gpus = gpus
-        self.queue, self.gpus, self.gpu_mem, self.nodelist = self._parse_queue(location, queue, gpus, gpu_mem)
+        if gpu_type is not None:
+            if gpu_mem != self.DEFAULT_GPU_MEM:
+                print("Warning: gpu_mem parameter is ignored when gputype is set.",file=sys.stderr)
+
+            self.queue, self.gpus, _, self.nodelist = self._parse_queue(location, "gpu-*", gpus, gpu_mem)
+            self.gpu_mem = self._parse_gputype(location, gpu_type)
+        else:
+            self.queue, self.gpus, self.gpu_mem, self.nodelist = self._parse_queue(location, queue, gpus, gpu_mem)
         self._jobid = None
         self._host = None
         self._state = None
@@ -558,7 +604,15 @@ class Job:
             sys.exit(1)
         return out
 
-
+    def _parse_gputype(self, location, gputype):
+        if location != "ufal":
+            raise NotImplementedError("gpu_type can be set only for ufal cluster.")
+        gputype = gputype.lower()
+        if gputype in UFAL_GPUTYPE_TO_CONSTRAINTS:
+            return f"--constraint={UFAL_GPUTYPE_TO_CONSTRAINTS[gputype]}"
+        else:
+            names = sorted(list(UFAL_GPUTYPE_TO_CONSTRAINTS.keys()))
+            raise ValueError(f"GPU type {gputype} not available or not unique. Possible values are {', '.join(names)}.")
 
     def _get_code_script(self):
         """Join headers and code to create a meaningful Python script."""

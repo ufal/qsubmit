@@ -1,5 +1,6 @@
 from argparse import ArgumentParser
 from qsubmit import Job, detect_location
+from qsubmit import UFAL_GPUTYPE_TO_CONSTRAINTS
 import sys
 import os
 
@@ -59,6 +60,7 @@ def qsubmit_argparser(name="qsubmit",desc="Batch engine script submission wrappe
     ap.add_argument('-c', '-cpus', '--cpus', '--cores', help='Number of CPU cores to use (default: %(default)s)', type=int, default=1)
     ap.add_argument('-g', '-gpus','--gpus', help='Number of GPUs to use (default: %(default)s)', type=int, default=0)
     ap.add_argument('-M', '-gpu-mem', '--gpu-mem', help='Amount of GPU memory to use (default: %(default)s)', default=None)
+    ap.add_argument('-gpu-type', '--gpu-type', help='The GPU type to use. (default: %(default)s). This option works only at ufal location. It overrides --gpu-mem and --queue.', default=None) #, choices=sorted(UFAL_GPUTYPE_TO_CONSTRAINTS.keys()))
     ap.add_argument('-m', '-mem', '--mem', help='Amount of memory to use (default: %(default)s)', default='1g')
     ap.add_argument('-l', '-logdir', '--logdir', help='Directory where the log file will be stored')
     ap.add_argument('-w', '--hold', '--wait', help='Hold until jobs with the given IDs are completed',
